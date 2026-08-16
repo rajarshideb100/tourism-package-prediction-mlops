@@ -1,4 +1,3 @@
-
 import json
 import os
 from pathlib import Path
@@ -48,27 +47,15 @@ def load_splits():
 
 def build_pipeline():
     numeric_features = [
-        "Age",
-        "CityTier",
-        "DurationOfPitch",
-        "NumberOfPersonVisiting",
-        "NumberOfFollowups",
-        "PreferredPropertyStar",
-        "NumberOfTrips",
-        "Passport",
-        "PitchSatisfactionScore",
-        "OwnCar",
-        "NumberOfChildrenVisiting",
-        "MonthlyIncome"
+        "Age", "CityTier", "DurationOfPitch", "NumberOfPersonVisiting",
+        "NumberOfFollowups", "PreferredPropertyStar", "NumberOfTrips",
+        "Passport", "PitchSatisfactionScore", "OwnCar",
+        "NumberOfChildrenVisiting", "MonthlyIncome"
     ]
 
     categorical_features = [
-        "TypeofContact",
-        "Occupation",
-        "Gender",
-        "ProductPitched",
-        "MaritalStatus",
-        "Designation"
+        "TypeofContact", "Occupation", "Gender", "ProductPitched",
+        "MaritalStatus", "Designation"
     ]
 
     preprocessor = ColumnTransformer([
@@ -92,7 +79,6 @@ def build_pipeline():
 
 def main():
     Xtrain, Xtest, ytrain, ytest = load_splits()
-
     pipeline = build_pipeline()
 
     param_grid = {
@@ -105,6 +91,9 @@ def main():
     }
 
     if MLFLOW_AVAILABLE:
+        # MLflow 3.x rejects the legacy filesystem backend unless explicitly enabled.
+        os.environ["MLFLOW_ALLOW_FILE_STORE"] = "true"
+
         mlflow.set_tracking_uri(
             os.getenv(
                 "MLFLOW_TRACKING_URI",
@@ -113,9 +102,7 @@ def main():
         )
 
         mlflow.set_experiment("tourism-package-prediction")
-        run_ctx = mlflow.start_run(
-            run_name="xgboost-grid-search"
-        )
+        run_ctx = mlflow.start_run(run_name="xgboost-grid-search")
     else:
         class DummyContext:
             def __enter__(self):
@@ -139,13 +126,9 @@ def main():
 
         grid.fit(Xtrain, ytrain)
 
-        # Persist every tuned parameter combination
-        # and its cross-validation score.
+        # Persist every tuned parameter combination and its cross-validation score.
         tuning_df = pd.DataFrame(grid.cv_results_)[[
-            "params",
-            "mean_test_score",
-            "std_test_score",
-            "rank_test_score"
+            "params", "mean_test_score", "std_test_score", "rank_test_score"
         ]].sort_values("rank_test_score")
 
         tuning_df.to_csv(TUNING_PATH, index=False)
@@ -153,109 +136,39 @@ def main():
         if MLFLOW_AVAILABLE:
             for _, row in tuning_df.iterrows():
                 with mlflow.start_run(nested=True):
-                    mlflow.log_params({
-                        k: str(v)
-                        for k, v in row["params"].items()
-                    })
-
-                    mlflow.log_metric(
-                        "cv_f1",
-                        float(row["mean_test_score"])
-                    )
-
-                    mlflow.log_metric(
-                        "cv_f1_std",
-                        float(row["std_test_score"])
-                    )
+                    mlflow.log_params({k: str(v) for k, v in row["params"].items()})
+                    mlflow.log_metric("cv_f1", float(row["mean_test_score"]))
+                    mlflow.log_metric("cv_f1_std", float(row["std_test_score"]))
 
         best_model = grid.best_estimator_
-
         pred_train = best_model.predict(Xtrain)
         pred_test = best_model.predict(Xtest)
         prob_test = best_model.predict_proba(Xtest)[:, 1]
 
         metrics = {
-            "train_accuracy": accuracy_score(
-                ytrain,
-                pred_train
-            ),
-            "test_accuracy": accuracy_score(
-                ytest,
-                pred_test
-            ),
-            "test_precision": precision_score(
-                ytest,
-                pred_test,
-                zero_division=0
-            ),
-            "test_recall": recall_score(
-                ytest,
-                pred_test,
-                zero_division=0
-            ),
-            "test_f1": f1_score(
-                ytest,
-                pred_test,
-                zero_division=0
-            ),
-            "test_roc_auc": roc_auc_score(
-                ytest,
-                prob_test
-            )
+            "train_accuracy": accuracy_score(ytrain, pred_train),
+            "test_accuracy": accuracy_score(ytest, pred_test),
+            "test_precision": precision_score(ytest, pred_test, zero_division=0),
+            "test_recall": recall_score(ytest, pred_test, zero_division=0),
+            "test_f1": f1_score(ytest, pred_test, zero_division=0),
+            "test_roc_auc": roc_auc_score(ytest, prob_test),
         }
 
         if MLFLOW_AVAILABLE:
-            mlflow.log_params({
-                k: str(v)
-                for k, v in grid.best_params_.items()
-            })
-
+            mlflow.log_params({k: str(v) for k, v in grid.best_params_.items()})
             mlflow.log_metrics(metrics)
 
     # Save trained artifacts
     joblib.dump(best_model, MODEL_PATH)
-
-    PARAMS_PATH.write_text(
-        json.dumps(
-            grid.best_params_,
-            indent=2,
-            default=str
-        )
-    )
-
-    METRICS_PATH.write_text(
-        json.dumps(
-            metrics,
-            indent=2
-        )
-    )
+    PARAMS_PATH.write_text(json.dumps(grid.best_params_, indent=2, default=str))
+    METRICS_PATH.write_text(json.dumps(metrics, indent=2))
 
     print("\nBest parameters:")
-    print(
-        json.dumps(
-            grid.best_params_,
-            indent=2,
-            default=str
-        )
-    )
-
+    print(json.dumps(grid.best_params_, indent=2, default=str))
     print("\nMetrics:")
-    print(
-        json.dumps(
-            metrics,
-            indent=2
-        )
-    )
-
+    print(json.dumps(metrics, indent=2))
     print("\nClassification report:")
-    print(
-        classification_report(
-            ytest,
-            pred_test,
-            digits=4
-        )
-    )
-
+    print(classification_report(ytest, pred_test, digits=4))
     print(f"Tuning results saved to: {TUNING_PATH}")
     print(f"Model saved to: {MODEL_PATH}")
     print(f"MLflow tracking enabled: {MLFLOW_AVAILABLE}")
