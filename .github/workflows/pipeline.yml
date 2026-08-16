@@ -64,10 +64,10 @@ jobs:
           name: data-splits
       - name: Train and evaluate model
         run: python tourism_project/model_building/train.py
-      - name: Commit trained model and metrics
+      - name: Commit all deployment artifacts
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add tourism_project/deployment/best_tourism_package_model.joblib tourism_project/deployment/model_metrics.json tourism_project/deployment/best_model_params.json
-          git commit -m 'Update trained tourism model [skip ci]' || echo 'No model changes to commit'
+          git add tourism_project/deployment/
+          git commit -m 'Update trained tourism deployment artifacts [skip ci]' || echo 'No deployment changes to commit'
           git push
