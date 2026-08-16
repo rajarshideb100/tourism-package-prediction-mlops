@@ -63,6 +63,8 @@ jobs:
         with:
           name: data-splits
       - name: Train and evaluate model
+        env:
+          MLFLOW_ALLOW_FILE_STORE: "true"
         run: python tourism_project/model_building/train.py
       - name: Commit trained model and metrics
         run: |
